@@ -33,3 +33,5 @@ The app is a static frontend and connects to the existing Raw Project Supabase p
 ## Important
 
 Do not upload only `index.html`. `app.js`, `styles.css`, and `logo.png` must stay beside it in the repository root.
+Vercel deployment
+
