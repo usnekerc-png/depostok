@@ -9,3 +9,5 @@ Bu klasör `Depo Stok` Android uygulamasını üretir.
 - Veriler mevcut Supabase altyapısında ortak tutulmaya devam eder.
 
 GitHub Actions her güncellemede install edilebilir APK üretir.
+
+APK build tetikleyici: 2026-08-21
