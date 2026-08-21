@@ -1,11 +1,11 @@
 const BASE='https://hbyoluijqgeexeiqaivn.supabase.co';
 const KEY='sb_publishable_at2kkyVOoLxsaAtLsb0pPg_2Ufgr0kp';
 const root=document.querySelector('#root');
-const st={session:null,user:null,profile:null,locations:[],products:[],inventory:[],movements:[],page:'home',query:'',filter:'all'};
+const st={session:null,user:null,profile:null,locations:[],products:[],inventory:[],movements:[],page:'home',query:'',filter:'all',category:'all'};
 
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>new Intl.NumberFormat('tr-TR',{maximumFractionDigits:2}).format(+n||0);
-const logo=(c='raw-logo')=>`<img class="${c}" src="./logo.png?v=21" alt="RAW PROJECT">`;
+const logo=(c='raw-logo')=>`<img class="${c}" src="./logo.png?v=22" alt="RAW PROJECT">`;
 const save=s=>{st.session=s;st.user=s?.user||null;s?localStorage.setItem('raw_session',JSON.stringify(s)):localStorage.removeItem('raw_session')};
 const inv=(p,l)=>st.inventory.find(x=>x.product_id===p&&x.location_id===l)||null;
 const stock=(p,l)=>+(inv(p,l)?.quantity||0);
@@ -16,13 +16,16 @@ const mgr=()=>['admin','manager'].includes(st.profile?.role);
 const criticalAt=(p,l)=>tracked(p.id,l.id)&&threshold(p.id,l.id)>0&&stock(p.id,l.id)<=threshold(p.id,l.id);
 const crit=p=>st.locations.some(l=>criticalAt(p,l));
 const trackedAt=(p,l)=>tracked(p.id,l.id);
+const CATEGORY_PRIORITY=['Süt & Bitkisel Süt','Protein Tozu','Takviye','İçecek','Kuru Gıda','Soğuk Dolap','Sos & Konserve'];
+const categoryOf=p=>(p.category||'Genel').trim()||'Genel';
+function sortCategories(cats){return [...cats].sort((a,b)=>{const ia=CATEGORY_PRIORITY.indexOf(a),ib=CATEGORY_PRIORITY.indexOf(b);if(ia>=0||ib>=0)return (ia<0?999:ia)-(ib<0?999:ib);return a.localeCompare(b,'tr')})}
 
 function toast(m){const e=document.createElement('div');e.className='toast';e.textContent=m;document.body.append(e);setTimeout(()=>e.remove(),3200)}
 async function refresh(){if(!st.session?.refresh_token)return false;const r=await fetch(BASE+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:st.session.refresh_token})});if(!r.ok)return false;save(await r.json());return true}
 async function api(path,opt={},retry=true){const run=()=>fetch(BASE+path,{...opt,headers:{apikey:KEY,'Content-Type':'application/json',...(st.session?.access_token?{Authorization:'Bearer '+st.session.access_token}:{}),...(opt.headers||{})}});let r=await run();if(r.status===401&&retry&&await refresh())r=await run();if(!r.ok){const t=await r.text();try{const j=JSON.parse(t);throw Error(j.message||j.error_description||j.hint||t)}catch(e){if(e instanceof SyntaxError)throw Error(t||'HTTP '+r.status);throw e}}const t=await r.text();return t?JSON.parse(t):null}
 async function rpc(n,b){return api('/rest/v1/rpc/'+n,{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(b)})}
 async function login(email,password){const r=await fetch(BASE+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({email,password})});const d=await r.json();if(!r.ok)throw Error(d.error_description||d.msg||'Giriş başarısız');save(d);await load()}
-async function load(){if(!st.user)return loginView();try{const u=st.user.id,[p,l,pr,i,m]=await Promise.all([api(`/rest/v1/profiles?id=eq.${u}&select=*`),api('/rest/v1/locations?is_active=eq.true&select=*&order=created_at.asc'),api('/rest/v1/products?is_active=eq.true&select=*&order=name.asc'),api('/rest/v1/inventory?select=*'),api('/rest/v1/stock_movements?select=*&order=created_at.desc&limit=400')]);st.profile=p?.[0];st.locations=l||[];st.products=pr||[];st.inventory=i||[];st.movements=m||[];render()}catch(e){toast(e.message);loginView()}}
+async function load(shouldRender=true){if(!st.user)return loginView();try{const u=st.user.id,[p,l,pr,i,m]=await Promise.all([api(`/rest/v1/profiles?id=eq.${u}&select=*`),api('/rest/v1/locations?is_active=eq.true&select=*&order=created_at.asc'),api('/rest/v1/products?is_active=eq.true&select=*&order=name.asc'),api('/rest/v1/inventory?select=*'),api('/rest/v1/stock_movements?select=*&order=created_at.desc&limit=400')]);st.profile=p?.[0];st.locations=l||[];st.products=pr||[];st.inventory=i||[];st.movements=m||[];if(shouldRender)render()}catch(e){toast(e.message);if(shouldRender)loginView()}}
 
 function loginView(){root.innerHTML=`<div class="login"><div class="login-card">${logo()}<div class="login-title">Depo Stok Uygulaması</div><form id="lf"><label>E-posta</label><input id="em" type="email" required placeholder="can@rawproject.com"><label>Şifre</label><input id="pw" type="password" required placeholder="••••••••"><button id="lb" class="primary">Giriş Yap</button><div id="le"></div></form><p class="tiny" style="text-align:center;margin-top:20px">Designed by <b class="gold">anvecan.com</b></p></div></div>`;const f=document.querySelector('#lf');f.onsubmit=async e=>{e.preventDefault();const b=document.querySelector('#lb'),le=document.querySelector('#le');b.disabled=true;b.textContent='Giriş yapılıyor...';le.innerHTML='';try{await login(document.querySelector('#em').value.trim(),document.querySelector('#pw').value)}catch(x){le.innerHTML=`<div class="error">${esc(x.message)}</div>`;b.disabled=false;b.textContent='Giriş Yap'}}}
 function shell(c){root.innerHTML=`<div class="app"><header><div class="top"><div class="brand">${logo()}<div><div class="hello">Günaydın ${esc(st.profile?.full_name?.split(' ')[0]||'Can')} 👋</div><div class="subtitle">Raw Project Stok Yönetimi</div></div></div><button id="out" class="iconbtn" title="Çıkış">↗</button></div></header><main>${c}</main><nav class="bottom"><button class="nav ${st.page==='home'?'active':''}" data-p="home"><b>⌂</b>Ana Sayfa</button><button class="nav ${st.page==='products'?'active':''}" data-p="products"><b>▣</b>Stok</button><button id="qa" class="plus">+</button><button class="nav ${st.page==='movements'?'active':''}" data-p="movements"><b>↕</b>Hareketler</button><button class="nav ${st.page==='profile'?'active':''}" data-p="profile"><b>◉</b>Profil</button></nav></div>`;document.querySelectorAll('[data-p]').forEach(x=>x.onclick=()=>{st.page=x.dataset.p;render()});document.querySelector('#qa').onclick=quick;document.querySelector('#out').onclick=()=>{save(null);st.profile=null;loginView()}}
@@ -46,7 +49,22 @@ function home(){
 
 function mediaFor(p){const demo=(p.photo_path||'').match(/^demo:([a-z]+)/),ic={dairy:'🥛',supplement:'⚡',drink:'💧',pantry:'🌾',sauce:'🥫',cold:'🧀'};if(demo)return `<div class="pimg demoimg">${ic[demo[1]]||'▦'}</div>`;if(p.photo_path)return `<img class="pimg" src="${BASE+'/storage/v1/object/public/product-images/'+encodeURI(p.photo_path)}" alt="${esc(p.name)}">`;return '<div class="pimg ph">▦</div>'}
 function card(p){const d=days(p.expiry_date);const bad=st.locations.filter(l=>criticalAt(p,l));const badges=[...bad.map(l=>`<span class="badge bad">${esc(l.short_name)} kritik</span>`),...(d<=14?[`<span class="badge warn">${d<0?'SKT Geçti':'SKT '+d+' gün'}</span>`]:[])].join(' ');return `<div class="product">${mediaFor(p)}<div><h4>${esc(p.name)}</h4><div class="meta">${esc(p.category)} · ${esc(p.unit)}${p.expiry_date?' · SKT '+new Date(p.expiry_date+'T00:00:00').toLocaleDateString('tr-TR'):''}</div>${badges}${mgr()?`<div><button class="editbtn" data-edit="${p.id}">⚙ Düzenle</button></div>`:''}</div><div class="stocks">${st.locations.map(l=>{const tr=trackedAt(p,l),th=threshold(p.id,l.id);return `<div class="stock ${tr?'':'off'}">${esc(l.short_name)}${tr?'':' · takip dışı'}<b>${fmt(stock(p.id,l.id))} ${esc(p.unit)}</b>${tr&&th>0?`<span class="tiny">kritik ≤ ${fmt(th)}</span>`:''}</div>`}).join('')}</div></div>`}
-function products(){let r=st.products.filter(p=>!st.query||p.name.toLocaleLowerCase('tr').includes(st.query.toLocaleLowerCase('tr'))||(p.category||'').toLocaleLowerCase('tr').includes(st.query.toLocaleLowerCase('tr')));if(st.filter==='critical')r=r.filter(crit);else if(st.filter==='expiry')r=r.filter(p=>days(p.expiry_date)<=14&&st.locations.some(l=>trackedAt(p,l)));else if(st.filter.startsWith('loc:')){const id=st.filter.slice(4);r=r.filter(p=>tracked(p.id,id))}const locChips=st.locations.map(l=>`<button class="chip ${st.filter==='loc:'+l.id?'active':''}" data-f="loc:${l.id}">${esc(l.short_name)}</button>`).join('');const priority=['Süt & Bitkisel Süt','Protein Tozu','Takviye','İçecek','Kuru Gıda','Soğuk Dolap','Sos & Konserve'];const groups=Object.entries(r.reduce((a,p)=>{const c=(p.category||'Genel').trim()||'Genel';(a[c]||(a[c]=[])).push(p);return a},{})).sort((a,b)=>{const ia=priority.indexOf(a[0]),ib=priority.indexOf(b[0]);if(ia>=0||ib>=0)return (ia<0?999:ia)-(ib<0?999:ib);return a[0].localeCompare(b[0],'tr')});const grouped=groups.map(([cat,items])=>`<section class="category-group"><div class="category-head"><div><span class="category-kicker">KATEGORİ</span><h3>${esc(cat)}</h3></div><span class="category-count">${items.length} ürün</span></div><div class="category-products">${items.map(card).join('')}</div></section>`).join('');shell(`<div class="toolbar"><div class="page-title" style="margin:0">Ürünler</div>${mgr()?'<button id="addp" class="secondary">+ Ürün Ekle</button>':''}</div><div class="search"><input id="q" value="${esc(st.query)}" placeholder="Ürün veya kategori ara..."></div><div class="chips"><button class="chip ${st.filter==='all'?'active':''}" data-f="all">Tümü</button>${locChips}<button class="chip ${st.filter==='critical'?'active':''}" data-f="critical">Kritik</button><button class="chip ${st.filter==='expiry'?'active':''}" data-f="expiry">SKT Yaklaşan</button></div>${r.length?grouped:'<div class="empty">Bu filtrede ürün yok.</div>'}`);const q=document.querySelector('#q');q.oninput=e=>{st.query=e.target.value;products()};document.querySelector('#addp')?.addEventListener('click',addProduct);document.querySelectorAll('[data-f]').forEach(x=>x.onclick=()=>{st.filter=x.dataset.f;products()});document.querySelectorAll('[data-edit]').forEach(x=>x.onclick=()=>editProduct(x.dataset.edit))}
+function products(){
+  const statusFiltered=()=>{let r=[...st.products];if(st.filter==='critical')r=r.filter(crit);else if(st.filter==='expiry')r=r.filter(p=>days(p.expiry_date)<=14&&st.locations.some(l=>trackedAt(p,l)));else if(st.filter.startsWith('loc:')){const id=st.filter.slice(4);r=r.filter(p=>tracked(p.id,id))}return r};
+  const categoryBase=statusFiltered(),cats=sortCategories(new Set(categoryBase.map(categoryOf)));
+  if(st.category!=='all'&&!cats.includes(st.category))st.category='all';
+  const locChips=st.locations.map(l=>`<button class="chip ${st.filter==='loc:'+l.id?'active':''}" data-f="loc:${l.id}">${esc(l.short_name)}</button>`).join('');
+  const catTabs=`<button class="category-tab ${st.category==='all'?'active':''}" data-cat="all">Tümü <span>${categoryBase.length}</span></button>`+cats.map(c=>`<button class="category-tab ${st.category===c?'active':''}" data-cat="${esc(c)}">${esc(c)} <span>${categoryBase.filter(p=>categoryOf(p)===c).length}</span></button>`).join('');
+  shell(`<div class="toolbar"><div class="page-title" style="margin:0">Ürünler</div>${mgr()?'<button id="addp" class="secondary">+ Ürün Ekle</button>':''}</div><div class="search"><input id="q" value="${esc(st.query)}" autocomplete="off" placeholder="Ürün veya kategori ara..."></div><div class="chips stock-filter-strip"><button class="chip ${st.filter==='all'?'active':''}" data-f="all">Tümü</button>${locChips}<button class="chip ${st.filter==='critical'?'active':''}" data-f="critical">Kritik</button><button class="chip ${st.filter==='expiry'?'active':''}" data-f="expiry">SKT Yaklaşan</button></div><div class="category-nav-title">Kategoriler</div><div class="category-tabs" id="categoryTabs">${catTabs}</div><div id="productResults"></div>`);
+  const q=document.querySelector('#q'),results=document.querySelector('#productResults'),tabs=document.querySelector('#categoryTabs');
+  const bindEdits=()=>results.querySelectorAll('[data-edit]').forEach(x=>x.onclick=()=>editProduct(x.dataset.edit));
+  const renderResults=()=>{let r=statusFiltered();const term=(st.query||'').trim().toLocaleLowerCase('tr');if(term)r=r.filter(p=>p.name.toLocaleLowerCase('tr').includes(term)||categoryOf(p).toLocaleLowerCase('tr').includes(term));if(st.category!=='all')r=r.filter(p=>categoryOf(p)===st.category);results.innerHTML=r.length?`<div class="result-meta"><b>${r.length}</b> ürün gösteriliyor</div>${r.map(card).join('')}`:'<div class="empty">Bu seçimde ürün yok.</div>';bindEdits()};
+  q.oninput=e=>{st.query=e.target.value;renderResults()};
+  tabs.querySelectorAll('[data-cat]').forEach(x=>x.onclick=()=>{st.category=x.dataset.cat;tabs.querySelectorAll('[data-cat]').forEach(b=>b.classList.toggle('active',b===x));renderResults()});
+  document.querySelector('#addp')?.addEventListener('click',addProduct);
+  document.querySelectorAll('[data-f]').forEach(x=>x.onclick=()=>{st.filter=x.dataset.f;products()});
+  renderResults();
+}
 
 function movements(){const c={in:0,out:0,transfer:0,waste:0};st.movements.forEach(m=>m.operation_code==='waste'?c.waste++:m.movement_type==='in'?c.in++:['transfer_in','transfer_out'].includes(m.movement_type)?c.transfer++:c.out++);shell(`<div class="page-title">Hareketler & Analiz</div><div class="summary"><div class="mini"><span>Giriş</span><b class="in">${c.in}</b></div><div class="mini"><span>Çıkış</span><b class="out">${c.out}</b></div><div class="mini"><span>Transfer</span><b class="transfer">${c.transfer}</b></div><div class="mini"><span>Zayi</span><b class="waste">${c.waste}</b></div></div><div class="card">${st.movements.length?st.movements.map(mrow).join(''):'<div class="empty">Henüz hareket yok.</div>'}</div>`)}
 function mrow(m){const p=st.products.find(x=>x.id===m.product_id),l=st.locations.find(x=>x.id===m.location_id),t=m.operation_code==='waste'?'Zayi':m.operation_code==='count'||m.movement_type==='adjustment'?'Sayım':m.movement_type==='in'?'Giriş':['transfer_in','transfer_out'].includes(m.movement_type)?'Transfer':'Çıkış',cl=t==='Giriş'?'in':t==='Çıkış'?'out':t==='Zayi'?'waste':'transfer',sg=t==='Giriş'||m.movement_type==='transfer_in'?'+':'−';return `<div class="listrow"><div><div class="mtype ${cl}">${t}</div><div class="tiny">${esc(p?.name||'Ürün')} · ${esc(l?.short_name||'Şube')}</div><div class="tiny">${esc(m.reason||m.note||'')}</div></div><div style="text-align:right"><b>${sg}${fmt(m.quantity)} ${esc(p?.unit||'')}</b><div class="tiny">${new Date(m.created_at).toLocaleString('tr-TR')}</div></div></div>`}
@@ -55,17 +73,169 @@ function render(){if(!st.user)return loginView();if(!st.profile)return load();({
 function modal(title,body){document.querySelector('.modal')?.remove();const d=document.createElement('div');d.className='modal';d.innerHTML=`<div class="sheet"><div class="sheethead"><h2>${esc(title)}</h2><button class="close" type="button">×</button></div>${body}</div>`;document.body.appendChild(d);d.querySelector('.close').onclick=()=>d.remove();d.onclick=e=>{if(e.target===d)d.remove()};return d}
 function quick(){const d=modal('Hızlı İşlem',`<div class="actions" style="margin-top:15px"><button class="action" data-q="entry"><i>↓</i>Stok Girişi</button><button class="action" data-q="exit"><i>↑</i>Stok Çıkışı</button><button class="action" data-q="transfer"><i>⇄</i>Transfer</button><button class="action" data-q="waste"><i>⌫</i>Zayi</button><button class="action" data-q="count"><i>✓</i>Sayım</button>${mgr()?'<button class="action" data-q="product"><i>＋</i>Yeni Ürün</button>':''}</div>`);d.querySelectorAll('[data-q]').forEach(x=>x.onclick=()=>{const a=x.dataset.q;d.remove();a==='product'?addProduct():move(a)})}
 
-function move(k){if(!st.products.length)return toast('Önce ürün ekleyin.');const nm={entry:'Stok Girişi',exit:'Stok Çıkışı',transfer:'Şubeler Arası Transfer',waste:'Zayi',count:'Fiziksel Sayım'}[k],lo=st.locations.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join(''),po=st.products.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join(''),d=modal(nm,`<form id="mf"><label>${k==='transfer'?'Kaynak Şube':'Şube'}</label><select id="loc">${lo}</select>${k==='transfer'?`<label>Hedef Şube</label><select id="tar">${lo}</select>`:''}<label>Ürün</label><select id="prd">${po}</select><label>${k==='count'?'Saydığınız Miktar':'Miktar'}</label><input id="qty" type="number" min="0" step="0.01" required><label>Açıklama</label><input id="rs" placeholder="İsteğe bağlı"><button id="sv" class="primary">Kaydet</button><div id="me"></div></form>`);const f=d.querySelector('#mf');f.onsubmit=async e=>{e.preventDefault();const sv=d.querySelector('#sv'),me=d.querySelector('#me'),l=d.querySelector('#loc').value,p=d.querySelector('#prd').value,q=+d.querySelector('#qty').value,r=d.querySelector('#rs').value.trim();sv.disabled=true;sv.textContent='Kaydediliyor...';try{if(!(q>=0))throw Error('Geçerli miktar girin.');if(k==='transfer'){const tar=d.querySelector('#tar').value;if(tar===l)throw Error('Kaynak ve hedef aynı olamaz.');if(q<=0)throw Error('Miktar sıfırdan büyük olmalı.');await rpc('transfer_stock_v2',{p_from_location_id:l,p_to_location_id:tar,p_product_id:p,p_quantity:q,p_note:r||null})}else{let delta=q,op='entry',why=r||nm;if(k==='exit'){delta=-q;op='exit'}if(k==='waste'){delta=-q;op='waste';why=r||'Zayi'}if(k==='count'){delta=q-stock(p,l);op='count';why=r||'Fiziksel sayım düzeltmesi';if(!delta){d.remove();return toast('Sayım farkı yok.')}}if(!delta)throw Error('Miktar sıfır olamaz.');await rpc('record_stock_movement_v2',{p_location_id:l,p_product_id:p,p_delta:delta,p_operation_code:op,p_reason:why,p_note:null})}d.remove();toast('İşlem kaydedildi.');await load()}catch(x){me.innerHTML=`<div class="error">${esc(x.message)}</div>`;sv.disabled=false;sv.textContent='Kaydet'}}}
+function move(k,preselectedId=null){
+  if(!st.products.length)return toast('Önce ürün ekleyin.');
+
+  const nm={
+    entry:'Stok Girişi',
+    exit:'Stok Çıkışı',
+    transfer:'Şubeler Arası Transfer',
+    waste:'Zayi',
+    count:'Fiziksel Sayım'
+  }[k];
+  const lo=st.locations.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
+
+  const d=modal(nm,`<form id="mf">
+    <label>${k==='transfer'?'Kaynak Şube':'Şube'}</label>
+    <select id="loc">${lo}</select>
+    ${k==='transfer'?`<label>Hedef Şube</label><select id="tar">${lo}</select>`:''}
+    <label>Ürün Seç</label>
+    <div class="product-picker">
+      <div class="picker-search"><span>⌕</span><input id="psearch" autocomplete="off" placeholder="Ürün adı veya kategori ara..."></div>
+      <div id="pcats" class="picker-cats"></div>
+      <div id="presults" class="picker-results"></div>
+      <input id="prd" type="hidden" value="${preselectedId||''}">
+      <div id="pselected" class="picker-selected"></div>
+    </div>
+    <label>${k==='count'?'Saydığınız Miktar':'Miktar'}</label>
+    <input id="qty" type="number" min="0" step="0.01" required>
+    <label>Açıklama</label>
+    <input id="rs" placeholder="İsteğe bağlı">
+    <button id="sv" class="primary">Kaydet</button>
+    <div id="me"></div>
+  </form>`);
+
+  const loc=d.querySelector('#loc');
+  const prd=d.querySelector('#prd');
+  const psearch=d.querySelector('#psearch');
+  const pcats=d.querySelector('#pcats');
+  const presults=d.querySelector('#presults');
+  const pselected=d.querySelector('#pselected');
+  let pickerCat='all';
+
+  const available=()=>{
+    const l=loc.value;
+    return st.products.filter(p=>k==='entry'||tracked(p.id,l)||stock(p.id,l)>0);
+  };
+
+  const renderPicker=()=>{
+    const base=available();
+    const cats=sortCategories(new Set(base.map(categoryOf)));
+    if(pickerCat!=='all'&&!cats.includes(pickerCat))pickerCat='all';
+
+    pcats.innerHTML=`<button type="button" class="picker-cat ${pickerCat==='all'?'active':''}" data-pcat="all">Tümü</button>`+
+      cats.map(c=>`<button type="button" class="picker-cat ${pickerCat===c?'active':''}" data-pcat="${esc(c)}">${esc(c)}</button>`).join('');
+
+    let r=base;
+    const term=(psearch.value||'').trim().toLocaleLowerCase('tr');
+    if(term)r=r.filter(p=>p.name.toLocaleLowerCase('tr').includes(term)||categoryOf(p).toLocaleLowerCase('tr').includes(term));
+    if(pickerCat!=='all')r=r.filter(p=>categoryOf(p)===pickerCat);
+
+    presults.innerHTML=r.length
+      ?r.map(p=>`<button type="button" class="picker-item ${prd.value===p.id?'selected':''}" data-pick="${p.id}">
+          ${mediaFor(p)}
+          <span class="picker-copy"><b>${esc(p.name)}</b><small>${esc(categoryOf(p))}</small></span>
+          <span class="picker-stock">Mevcut<b>${fmt(stock(p.id,loc.value))} ${esc(p.unit)}</b></span>
+        </button>`).join('')
+      :'<div class="picker-empty">Eşleşen ürün yok.</div>';
+
+    pcats.querySelectorAll('[data-pcat]').forEach(x=>x.onclick=()=>{
+      pickerCat=x.dataset.pcat;
+      renderPicker();
+    });
+    presults.querySelectorAll('[data-pick]').forEach(x=>x.onclick=()=>{
+      prd.value=x.dataset.pick;
+      renderPicker();
+      d.querySelector('#qty').focus();
+    });
+
+    const sel=st.products.find(p=>p.id===prd.value);
+    pselected.innerHTML=sel
+      ?`<span>Seçili ürün</span><b>${esc(sel.name)}</b><small>${esc(categoryOf(sel))} · ${esc(st.locations.find(l=>l.id===loc.value)?.short_name||'Şube')} stok: ${fmt(stock(sel.id,loc.value))} ${esc(sel.unit)}</small>`
+      :'<span>Henüz ürün seçilmedi</span>';
+  };
+
+  psearch.oninput=renderPicker;
+  loc.onchange=()=>{
+    const current=st.products.find(p=>p.id===prd.value);
+    if(current&&k!=='entry'&&!tracked(current.id,loc.value)&&stock(current.id,loc.value)<=0)prd.value='';
+    pickerCat='all';
+    renderPicker();
+  };
+  renderPicker();
+
+  const f=d.querySelector('#mf');
+  f.onsubmit=async e=>{
+    e.preventDefault();
+    const sv=d.querySelector('#sv');
+    const me=d.querySelector('#me');
+    const l=loc.value;
+    const productId=prd.value;
+    const q=+d.querySelector('#qty').value;
+    const reason=d.querySelector('#rs').value.trim();
+    me.innerHTML='';
+
+    if(!productId){
+      me.innerHTML='<div class="error">Lütfen işlem yapılacak ürünü seçin.</div>';
+      psearch.focus();
+      return;
+    }
+
+    sv.disabled=true;
+    sv.textContent='Kaydediliyor...';
+    try{
+      if(!(q>=0))throw Error('Geçerli miktar girin.');
+      if(k==='transfer'){
+        const tar=d.querySelector('#tar').value;
+        if(tar===l)throw Error('Kaynak ve hedef aynı olamaz.');
+        if(q<=0)throw Error('Miktar sıfırdan büyük olmalı.');
+        await rpc('transfer_stock_v2',{
+          p_from_location_id:l,
+          p_to_location_id:tar,
+          p_product_id:productId,
+          p_quantity:q,
+          p_note:reason||null
+        });
+      }else{
+        let delta=q,op='entry',why=reason||nm;
+        if(k==='exit'){delta=-q;op='exit'}
+        if(k==='waste'){delta=-q;op='waste';why=reason||'Zayi'}
+        if(k==='count'){
+          delta=q-stock(productId,l);
+          op='count';
+          why=reason||'Fiziksel sayım düzeltmesi';
+          if(!delta){d.remove();return toast('Sayım farkı yok.')}
+        }
+        if(!delta)throw Error('Miktar sıfır olamaz.');
+        await rpc('record_stock_movement_v2',{
+          p_location_id:l,
+          p_product_id:productId,
+          p_delta:delta,
+          p_operation_code:op,
+          p_reason:why,
+          p_note:null
+        });
+      }
+      d.remove();
+      toast('İşlem kaydedildi.');
+      await load();
+    }catch(x){
+      me.innerHTML=`<div class="error">${esc(x.message)}</div>`;
+      sv.disabled=false;
+      sv.textContent='Kaydet';
+    }
+  };
+}
 
 async function uploadImage(file){if(!file)return null;if(file.size>20*1024*1024)throw Error('Görsel 20 MB’dan küçük olmalı.');const ext=(file.name.split('.').pop()||'jpg').replace(/[^a-z0-9]/gi,'').toLowerCase()||'jpg',path=st.user.id+'/'+crypto.randomUUID()+'.'+ext;let r=await fetch(BASE+'/storage/v1/object/product-images/'+path,{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+st.session.access_token,'Content-Type':file.type||'application/octet-stream','x-upsert':'false'},body:file});if(r.status===401&&await refresh())r=await fetch(BASE+'/storage/v1/object/product-images/'+path,{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+st.session.access_token,'Content-Type':file.type||'application/octet-stream','x-upsert':'false'},body:file});if(!r.ok)throw Error('Görsel yüklenemedi: '+await r.text());return path}
 function branchSettingsMarkup(productId=null){return st.locations.map(l=>{const r=productId?inv(productId,l.id):null,tr=productId?Boolean(r?.is_tracked):false,qty=productId?+(r?.quantity||0):0,ov=productId?r?.min_stock_threshold:null,disabled=qty>0?'disabled':'';return `<div class="branch-setting" data-bset="${l.id}"><div class="branch-setting-head"><label class="checkline" style="margin:0"><input class="trackbox" type="checkbox" ${tr?'checked':''} ${disabled}> ${esc(l.short_name)} deposunda takip et</label><span class="branch-current">Mevcut: ${fmt(qty)}${productId?' '+esc(st.products.find(p=>p.id===productId)?.unit||''):''}</span></div>${qty>0?'<div class="tiny" style="margin-top:6px">Bu şubede stok bulunduğu için takip kapatılamaz.</div>':''}<label>Kritik stok limiti <span class="tiny">(boşsa varsayılan limit)</span></label><input class="thresholdbox" type="number" min="0" step="0.01" value="${ov??''}" placeholder="Varsayılan limiti kullan"></div>`}).join('')}
 function collectBranchSettings(d){return [...d.querySelectorAll('[data-bset]')].map(x=>({location_id:x.dataset.bset,is_tracked:x.querySelector('.trackbox').checked,min_stock_threshold:x.querySelector('.thresholdbox').value===''?null:+x.querySelector('.thresholdbox').value}))}
 
-function addProduct(){if(!mgr())return toast('Ürün ekleme yetkiniz yok.');const d=modal('Yeni Ürün Ekle',`<form id="pf"><label>Ürün Adı *</label><input id="pn" required minlength="2"><div class="row"><div><label>Kategori *</label><input id="pc" required value="Genel"></div><div><label>Birim *</label><select id="pu"><option>adet</option><option>kg</option><option>lt</option><option>paket</option><option>şişe</option><option>koli</option><option>kutu</option></select></div></div><div class="row"><div><label>Varsayılan Kritik Stok Limiti</label><input id="pm" type="number" min="0" step="0.01" value="0"></div><div><label>SKT <span class="tiny">(opsiyonel)</span></label><input id="pe" type="date"></div></div><div class="row"><div><label>Tedarikçi</label><input id="ps"></div><div><label>Alış Fiyatı</label><input id="pp" type="number" min="0" step="0.01"></div></div><div class="row"><div><label>SKU</label><input id="psku"></div><div><label>Barkod</label><input id="pbar"></div></div><label>Not</label><textarea id="pnotes" placeholder="İsteğe bağlı"></textarea><label>Ürün Görseli <span class="tiny">(opsiyonel)</span></label><input id="pi" type="file" accept="image/*"><div class="form-section"><div class="form-section-title">Şube Takibi</div>${branchSettingsMarkup()}</div><button id="sp" class="primary">Ürünü Ekle</button><div id="perr"></div></form>`);const f=d.querySelector('#pf');f.onsubmit=async e=>{e.preventDefault();const sp=d.querySelector('#sp'),perr=d.querySelector('#perr');sp.disabled=true;sp.textContent='Ürün ekleniyor...';perr.innerHTML='';try{const path=await uploadImage(d.querySelector('#pi').files?.[0]||null);const newId=await rpc('create_product_v3',{p_name:d.querySelector('#pn').value.trim(),p_category:d.querySelector('#pc').value.trim(),p_unit:d.querySelector('#pu').value,p_expiry_date:d.querySelector('#pe').value||null,p_photo_path:path,p_min_stock:+d.querySelector('#pm').value||0,p_supplier:d.querySelector('#ps').value.trim()||null,p_purchase_price:+d.querySelector('#pp').value||0,p_sku:d.querySelector('#psku').value.trim()||null,p_barcode:d.querySelector('#pbar').value.trim()||null,p_notes:d.querySelector('#pnotes').value.trim()||null});const id=Array.isArray(newId)?newId[0]:newId;for(const s of collectBranchSettings(d))await rpc('update_inventory_settings_v1',{p_location_id:s.location_id,p_product_id:id,p_is_tracked:s.is_tracked,p_min_stock_threshold:s.min_stock_threshold});d.remove();st.page='products';st.filter='all';toast('Ürün başarıyla eklendi.');await load()}catch(x){perr.innerHTML=`<div class="error">${esc(x.message)}</div>`;sp.disabled=false;sp.textContent='Ürünü Ekle'}}}
+function addProduct(){if(!mgr())return toast('Ürün ekleme yetkiniz yok.');const d=modal('Yeni Ürün Ekle',`<form id="pf"><label>Ürün Adı *</label><input id="pn" required minlength="2"><div class="row"><div><label>Kategori *</label><input id="pc" required value="Genel"></div><div><label>Birim *</label><select id="pu"><option>adet</option><option>kg</option><option>lt</option><option>paket</option><option>şişe</option><option>koli</option><option>kutu</option></select></div></div><div class="row"><div><label>Varsayılan Kritik Stok Limiti</label><input id="pm" type="number" min="0" step="0.01" value="0"></div><div><label>SKT <span class="tiny">(opsiyonel)</span></label><input id="pe" type="date"></div></div><div class="row"><div><label>Tedarikçi</label><input id="ps"></div><div><label>Alış Fiyatı</label><input id="pp" type="number" min="0" step="0.01"></div></div><div class="row"><div><label>SKU</label><input id="psku"></div><div><label>Barkod</label><input id="pbar"></div></div><label>Not</label><textarea id="pnotes" placeholder="İsteğe bağlı"></textarea><label>Ürün Görseli <span class="tiny">(opsiyonel)</span></label><input id="pi" type="file" accept="image/*"><div class="form-section"><div class="form-section-title">Şube Takibi</div>${branchSettingsMarkup()}</div><button id="sp" class="primary">Ürünü Ekle</button><div id="perr"></div></form>`);const f=d.querySelector('#pf');f.onsubmit=async e=>{e.preventDefault();const sp=d.querySelector('#sp'),perr=d.querySelector('#perr');sp.disabled=true;sp.textContent='Ürün ekleniyor...';perr.innerHTML='';try{const path=await uploadImage(d.querySelector('#pi').files?.[0]||null);const newId=await rpc('create_product_v3',{p_name:d.querySelector('#pn').value.trim(),p_category:d.querySelector('#pc').value.trim(),p_unit:d.querySelector('#pu').value,p_expiry_date:d.querySelector('#pe').value||null,p_photo_path:path,p_min_stock:+d.querySelector('#pm').value||0,p_supplier:d.querySelector('#ps').value.trim()||null,p_purchase_price:+d.querySelector('#pp').value||0,p_sku:d.querySelector('#psku').value.trim()||null,p_barcode:d.querySelector('#pbar').value.trim()||null,p_notes:d.querySelector('#pnotes').value.trim()||null});const id=Array.isArray(newId)?newId[0]:newId;for(const s of collectBranchSettings(d))await rpc('update_inventory_settings_v1',{p_location_id:s.location_id,p_product_id:id,p_is_tracked:s.is_tracked,p_min_stock_threshold:s.min_stock_threshold});d.remove();st.page='products';st.filter='all';st.category='all';toast('Ürün başarıyla eklendi.');await load()}catch(x){perr.innerHTML=`<div class="error">${esc(x.message)}</div>`;sp.disabled=false;sp.textContent='Ürünü Ekle'}}}
 
-function editProduct(id){if(!mgr())return toast('Düzenleme yetkiniz yok.');const p=st.products.find(x=>x.id===id);if(!p)return toast('Ürün bulunamadı.');const d=modal('Ürünü Düzenle',`<form id="ef"><label>Ürün Adı *</label><input id="en" required minlength="2" value="${esc(p.name)}"><div class="row"><div><label>Kategori *</label><input id="ec" required value="${esc(p.category)}"></div><div><label>Birim *</label><select id="eu">${['adet','kg','lt','paket','şişe','koli','kutu'].map(u=>`<option ${p.unit===u?'selected':''}>${u}</option>`).join('')}</select></div></div><div class="row"><div><label>Varsayılan Kritik Stok Limiti</label><input id="emin" type="number" min="0" step="0.01" value="${p.min_stock??0}"></div><div><label>SKT <span class="tiny">(opsiyonel)</span></label><input id="ee" type="date" value="${p.expiry_date||''}"></div></div><div class="row"><div><label>Tedarikçi</label><input id="es" value="${esc(p.supplier||'')}"></div><div><label>Alış Fiyatı</label><input id="eprice" type="number" min="0" step="0.01" value="${p.purchase_price??0}"></div></div><div class="row"><div><label>SKU</label><input id="esku" value="${esc(p.sku||'')}"></div><div><label>Barkod</label><input id="ebar" value="${esc(p.barcode||'')}"></div></div><label>Not</label><textarea id="enotes">${esc(p.notes||'')}</textarea><label>Yeni Görsel <span class="tiny">(opsiyonel)</span></label><input id="ei" type="file" accept="image/*"><label class="checkline"><input id="eremove" type="checkbox"> Mevcut görseli kaldır</label><div class="form-section"><div class="form-section-title">Şube & Kritik Stok Ayarları</div>${branchSettingsMarkup(id)}</div><div class="save-row"><button id="esv" class="primary" style="margin-top:0">Değişiklikleri Kaydet</button><button id="estock" type="button" class="secondary">Stok Sayımı Yap</button></div><div id="eerr"></div></form>`);d.querySelector('#estock').onclick=()=>{d.remove();move('count')};const f=d.querySelector('#ef');f.onsubmit=async e=>{e.preventDefault();const b=d.querySelector('#esv'),er=d.querySelector('#eerr');b.disabled=true;b.textContent='Kaydediliyor...';er.innerHTML='';try{let photo=p.photo_path||null;if(d.querySelector('#eremove').checked)photo=null;const nf=d.querySelector('#ei').files?.[0]||null;if(nf)photo=await uploadImage(nf);await rpc('update_product_v3',{p_product_id:p.id,p_name:d.querySelector('#en').value.trim(),p_category:d.querySelector('#ec').value.trim(),p_unit:d.querySelector('#eu').value,p_min_stock:+d.querySelector('#emin').value||0,p_expiry_date:d.querySelector('#ee').value||null,p_photo_path:photo,p_supplier:d.querySelector('#es').value.trim()||null,p_purchase_price:+d.querySelector('#eprice').value||0,p_notes:d.querySelector('#enotes').value.trim()||null,p_sku:d.querySelector('#esku').value.trim()||null,p_barcode:d.querySelector('#ebar').value.trim()||null});for(const s of collectBranchSettings(d))await rpc('update_inventory_settings_v1',{p_location_id:s.location_id,p_product_id:p.id,p_is_tracked:s.is_tracked,p_min_stock_threshold:s.min_stock_threshold});d.remove();toast('Ürün güncellendi.');await load()}catch(x){er.innerHTML=`<div class="error">${esc(x.message)}</div>`;b.disabled=false;b.textContent='Değişiklikleri Kaydet'}}}
+function editProduct(id){if(!mgr())return toast('Düzenleme yetkiniz yok.');const p=st.products.find(x=>x.id===id);if(!p)return toast('Ürün bulunamadı.');const d=modal('Ürünü Düzenle',`<form id="ef"><label>Ürün Adı *</label><input id="en" required minlength="2" value="${esc(p.name)}"><div class="row"><div><label>Kategori *</label><input id="ec" required value="${esc(p.category)}"></div><div><label>Birim *</label><select id="eu">${['adet','kg','lt','paket','şişe','koli','kutu'].map(u=>`<option ${p.unit===u?'selected':''}>${u}</option>`).join('')}</select></div></div><div class="row"><div><label>Varsayılan Kritik Stok Limiti</label><input id="emin" type="number" min="0" step="0.01" value="${p.min_stock??0}"></div><div><label>SKT <span class="tiny">(opsiyonel)</span></label><input id="ee" type="date" value="${p.expiry_date||''}"></div></div><div class="row"><div><label>Tedarikçi</label><input id="es" value="${esc(p.supplier||'')}"></div><div><label>Alış Fiyatı</label><input id="eprice" type="number" min="0" step="0.01" value="${p.purchase_price??0}"></div></div><div class="row"><div><label>SKU</label><input id="esku" value="${esc(p.sku||'')}"></div><div><label>Barkod</label><input id="ebar" value="${esc(p.barcode||'')}"></div></div><label>Not</label><textarea id="enotes">${esc(p.notes||'')}</textarea><label>Yeni Görsel <span class="tiny">(opsiyonel)</span></label><input id="ei" type="file" accept="image/*"><label class="checkline"><input id="eremove" type="checkbox"> Mevcut görseli kaldır</label><div class="form-section"><div class="form-section-title">Şube & Kritik Stok Ayarları</div>${branchSettingsMarkup(id)}</div><div class="save-row"><button id="esv" class="primary" style="margin-top:0">Değişiklikleri Kaydet</button><button id="estock" type="button" class="secondary">Stok Sayımı Yap</button></div><div id="eerr"></div></form>`);d.querySelector('#estock').onclick=()=>{d.remove();move('count',p.id)};const f=d.querySelector('#ef');f.onsubmit=async e=>{e.preventDefault();const b=d.querySelector('#esv'),er=d.querySelector('#eerr');b.disabled=true;b.textContent='Kaydediliyor...';er.innerHTML='';try{let photo=p.photo_path||null;if(d.querySelector('#eremove').checked)photo=null;const nf=d.querySelector('#ei').files?.[0]||null;if(nf)photo=await uploadImage(nf);await rpc('update_product_v3',{p_product_id:p.id,p_name:d.querySelector('#en').value.trim(),p_category:d.querySelector('#ec').value.trim(),p_unit:d.querySelector('#eu').value,p_min_stock:+d.querySelector('#emin').value||0,p_expiry_date:d.querySelector('#ee').value||null,p_photo_path:photo,p_supplier:d.querySelector('#es').value.trim()||null,p_purchase_price:+d.querySelector('#eprice').value||0,p_notes:d.querySelector('#enotes').value.trim()||null,p_sku:d.querySelector('#esku').value.trim()||null,p_barcode:d.querySelector('#ebar').value.trim()||null});for(const s of collectBranchSettings(d))await rpc('update_inventory_settings_v1',{p_location_id:s.location_id,p_product_id:p.id,p_is_tracked:s.is_tracked,p_min_stock_threshold:s.min_stock_threshold});d.remove();toast('Ürün güncellendi.');await load()}catch(x){er.innerHTML=`<div class="error">${esc(x.message)}</div>`;b.disabled=false;b.textContent='Değişiklikleri Kaydet'}}}
 
 try{const s=JSON.parse(localStorage.getItem('raw_session')||'null');if(s)save(s)}catch{}
 setTimeout(()=>document.querySelector('#splash')?.classList.add('hide'),1050);
 st.user?load():loginView();
-setInterval(()=>st.user&&load(),20000);
+setInterval(()=>st.user&&load(false),20000);

@@ -33,5 +33,10 @@ The app is a static frontend and connects to the existing Raw Project Supabase p
 ## Important
 
 Do not upload only `index.html`. `app.js`, `styles.css`, and `logo.png` must stay beside it in the repository root.
-Vercel deployment
 
+
+## Rev22
+- Stok giriş/çıkış ekranlarında hızlı ürün arama ve kategori seçimi
+- Stok ekranında yatay kategori sekmeleri
+- Arama alanında yazarken odak/cursor kaybı giderildi
+- Arka plan veri yenilemesi artık açık formu veya aramayı kapatmıyor
