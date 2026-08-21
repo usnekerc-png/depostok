@@ -1,0 +1,49 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.anvecan.depostok'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.anvecan.depostok'
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// APK her build'de GitHub deposundaki en güncel web uygulamasını içine alır.
+def repoRoot = rootProject.projectDir.parentFile
+def webAssetsDir = file('src/main/assets/web')
+
+tasks.register('syncWebAssets', Copy) {
+    from(repoRoot) {
+        include 'index.html'
+        include 'app.js'
+        include 'styles.css'
+        include 'logo.png'
+    }
+    into(webAssetsDir)
+}
+
+tasks.named('preBuild').configure {
+    dependsOn(tasks.named('syncWebAssets'))
+}
